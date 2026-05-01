@@ -311,6 +311,22 @@ footer{ background:var(--bg0); padding:4rem 5rem 2rem; border-top:1px solid rgba
 }
 .wm-canvas.active { display:block; }
 
+
+/* Preview toggle button */
+.preview-toggle {
+  display:none; align-items:center; gap:0.6rem;
+  background: rgba(200,121,65,0.12);
+  border: 1px solid rgba(200,121,65,0.3);
+  color: var(--gold);
+  font-family:'Space Mono',monospace; font-size:0.62rem;
+  letter-spacing:0.18em; text-transform:uppercase; font-weight:700;
+  padding:0.7rem 1.2rem; cursor:pointer;
+  transition: background 0.25s; margin-bottom:1.5rem; width:100%;
+  justify-content:center;
+}
+.preview-toggle.visible { display:flex; }
+.preview-toggle:hover { background:rgba(200,121,65,0.22); }
+
 </style>
 </head>
 <body>
@@ -330,6 +346,7 @@ footer{ background:var(--bg0); padding:4rem 5rem 2rem; border-top:1px solid rgba
       </div>
     </div>
     <div class="modal-body">
+      <button class="preview-toggle" id="m-preview-btn" onclick="togglePreview()">📄 Ver partitura incluida →</button>
       <p class="modal-eyebrow" id="m-eyebrow">PDF Descargable</p>
       <h2 class="modal-title" id="m-title"></h2>
       <p class="modal-subtitle" id="m-subtitle"></p>
@@ -757,40 +774,83 @@ function drawWatermark(canvas, img) {
   }
 }
 
+// Track current modal state
+let currentSlug = null;
+let showingPreview = false;
+
+function togglePreview() {
+  const mainImg = document.getElementById('m-img');
+  const wmC = document.getElementById('wm-canvas');
+  const btn = document.getElementById('m-preview-btn');
+  const previews = currentSlug && PREVIEWS[currentSlug];
+  if (!previews) return;
+
+  showingPreview = !showingPreview;
+  if (showingPreview) {
+    // Show partitura
+    mainImg.src = previews[1].src;
+    mainImg.className = 'preview-mode';
+    btn.textContent = '← Ver portada';
+    wmC.classList.add('active');
+    const doWM = () => drawWatermark(wmC, mainImg);
+    if (mainImg.complete && mainImg.naturalHeight > 0) doWM();
+    else mainImg.onload = doWM;
+  } else {
+    // Show cover
+    mainImg.src = previews[0].src;
+    mainImg.className = '';
+    btn.textContent = '📄 Ver partitura incluida →';
+    wmC.classList.remove('active');
+    mainImg.onload = null;
+  }
+}
+
 function openModal(slug) {
   const p = PRODUCTS[slug];
   if (!p) return;
+  currentSlug = slug;
+  showingPreview = false;
 
   const mainImg = document.getElementById('m-img');
   const thumbsEl = document.getElementById('m-thumbs');
+  const wmC = document.getElementById('wm-canvas');
+  const btn = document.getElementById('m-preview-btn');
+
+  // Reset to cover
   mainImg.src = p.img;
   mainImg.alt = p.name;
   mainImg.className = '';
+  if (wmC) wmC.classList.remove('active');
   document.getElementById('m-tag').textContent = p.tag;
 
-  // Build gallery if previews exist
+  // Show/hide preview button
+  if (btn) {
+    btn.textContent = '📄 Ver partitura incluida →';
+    PREVIEWS[slug] ? btn.classList.add('visible') : btn.classList.remove('visible');
+  }
+
+  // Build thumbnails
   thumbsEl.innerHTML = '';
   if (PREVIEWS[slug]) {
     const imgs = PREVIEWS[slug];
-    imgs.forEach((item, i) => {
+    imgs.forEach((item, idx) => {
       const div = document.createElement('div');
-      div.className = 'modal-thumb' + (i === 0 ? ' active' : '');
-      div.innerHTML = `<img src="${item.src}" alt="${item.label}"><span class="modal-thumb-label">${item.label}</span>`;
-      div.addEventListener('click', () => {
-        // Update main image
+      div.className = 'modal-thumb' + (idx === 0 ? ' active' : '');
+      div.innerHTML = '<img src="' + item.src + '" alt="' + item.label + '"><span class="modal-thumb-label">' + item.label + '</span>';
+      div.addEventListener('click', function() {
+        const isPreview = idx > 0;
         mainImg.src = item.src;
-        mainImg.className = i > 0 ? 'preview-mode' : '';
-        // Update active thumb
+        mainImg.className = isPreview ? 'preview-mode' : '';
         thumbsEl.querySelectorAll('.modal-thumb').forEach(t => t.classList.remove('active'));
         div.classList.add('active');
-        // Draw canvas watermark on preview pages only
-        const wmC = document.getElementById('wm-canvas');
+        showingPreview = isPreview;
+        if (btn) btn.textContent = isPreview ? '← Ver portada' : '📄 Ver partitura incluida →';
         if (wmC) {
-          if (i > 0) {
-            // Wait for image to load then draw watermark
-            mainImg.onload = () => drawWatermark(wmC, mainImg);
-            if (mainImg.complete) drawWatermark(wmC, mainImg);
+          if (isPreview) {
             wmC.classList.add('active');
+            const doWM = function() { drawWatermark(wmC, mainImg); };
+            if (mainImg.complete && mainImg.naturalHeight > 0) doWM();
+            else mainImg.onload = doWM;
           } else {
             wmC.classList.remove('active');
             mainImg.onload = null;
